@@ -45,10 +45,19 @@ public class BetServiceImpl implements BetService {
     public CompletableFuture<Bet> placeBetAsync(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount) {
         return CompletableFuture.supplyAsync(() -> placeBet(eventId, customerId, betType, multipleCount, stakeAmount))
                 .orTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .exceptionally(ex -> {
-                    // Log the exception and provide fallback
-                    System.err.println("Bet placement timed out after " + TIMEOUT_SECONDS + " seconds: " + ex.getMessage());
-                    throw new RuntimeException("Bet placement timed out. Please try again.");
+                .handle((result, ex) -> {
+                    if (ex == null) return result;
+                    Throwable cause = ex;
+                    if (ex instanceof java.util.concurrent.CompletionException && ex.getCause() != null) {
+                        cause = ex.getCause();
+                    }
+                    if (cause instanceof java.util.concurrent.TimeoutException) {
+                        throw new com.example.bilyoner.core.exception.BetTimeoutException();
+                    }
+                    if (cause instanceof RuntimeException) {
+                        throw (RuntimeException) cause;
+                    }
+                    throw new RuntimeException(cause);
                 });
     }
 
@@ -132,9 +141,11 @@ public class BetServiceImpl implements BetService {
     public Bet placeBetFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Exception ex) {
         // Log the exception
         System.err.println("Circuit breaker triggered for bet placement: " + ex.getMessage());
-        
-        // Provide fallback response or throw runtime exception
-        throw new RuntimeException("Bet placement service is temporarily unavailable. Please try again later.");
+        // Exception'ı tekrar fırlat ki GlobalExceptionHandler çalışsın
+        if (ex instanceof RuntimeException) {
+            throw (RuntimeException) ex;
+        }
+        throw new RuntimeException(ex);
     }
     
     /**
@@ -143,10 +154,13 @@ public class BetServiceImpl implements BetService {
     public CompletableFuture<Bet> placeBetAsyncFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Exception ex) {
         // Log the exception
         System.err.println("Circuit breaker triggered for async bet placement: " + ex.getMessage());
-        
-        // Provide fallback response or complete exceptionally
+        // Exception'ı tekrar fırlat ki GlobalExceptionHandler çalışsın
         CompletableFuture<Bet> future = new CompletableFuture<>();
-        future.completeExceptionally(new RuntimeException("Bet placement service is temporarily unavailable. Please try again later."));
+        if (ex instanceof RuntimeException) {
+            future.completeExceptionally(ex);
+        } else {
+            future.completeExceptionally(new RuntimeException(ex));
+        }
         return future;
     }
 } 

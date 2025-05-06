@@ -12,6 +12,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
+import com.example.bilyoner.core.exception.EventNotFoundException;
+import com.example.bilyoner.core.exception.BetLimitExceededException;
+import com.example.bilyoner.core.exception.StakeLimitExceededException;
+import com.example.bilyoner.core.exception.OddsChangedException;
+import com.example.bilyoner.core.exception.BetTimeoutException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
@@ -68,5 +74,45 @@ public class GlobalExceptionHandler {
         Map<String, String> error = new HashMap<>();
         error.put("error", "Beklenmeyen bir hata oluştu: " + ex.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+    }
+
+    @ExceptionHandler(EventNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleEventNotFound(EventNotFoundException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Event not found");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(BetLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleBetLimitExceeded(BetLimitExceededException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Bet limit exceeded");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(error);
+    }
+
+    @ExceptionHandler(StakeLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleStakeLimitExceeded(StakeLimitExceededException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Stake limit exceeded");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(error);
+    }
+
+    @ExceptionHandler(OddsChangedException.class)
+    public ResponseEntity<Map<String, String>> handleOddsChanged(OddsChangedException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Odds changed");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler(BetTimeoutException.class)
+    public ResponseEntity<Map<String, String>> handleBetTimeout(BetTimeoutException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Timeout");
+        error.put("message", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.REQUEST_TIMEOUT).body(error);
     }
 } 

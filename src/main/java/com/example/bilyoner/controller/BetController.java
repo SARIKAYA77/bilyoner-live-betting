@@ -39,7 +39,13 @@ public class BetController {
                 betRequestDTO.getStakeAmount()
             )
             .thenApply(bet -> ResponseEntity.ok(mapToDTO(bet)))
-            .exceptionally(ex -> ResponseEntity.badRequest().body(null));
+            .exceptionally(ex -> {
+                // Exception'ı tekrar fırlat ki GlobalExceptionHandler çalışsın
+                if (ex.getCause() instanceof RuntimeException) {
+                    throw (RuntimeException) ex.getCause();
+                }
+                throw new RuntimeException(ex);
+            });
     }
 
     /**
