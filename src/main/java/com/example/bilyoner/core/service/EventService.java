@@ -2,6 +2,7 @@ package com.example.bilyoner.core.service;
 
 import com.example.bilyoner.core.domain.Event;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Domain service for Event-related operations
@@ -32,4 +33,8 @@ public interface EventService {
      * This will be scheduled to run every second
      */
     void updateAllEventOdds();
+
+    Optional<Event> findByUniqueFields(String leagueName, String homeTeam, String awayTeam, java.time.LocalDateTime startTime);
+
+    Event createEvent(com.example.bilyoner.dto.EventDTO eventDTO);
 } 

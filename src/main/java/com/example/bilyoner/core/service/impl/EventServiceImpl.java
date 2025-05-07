@@ -5,11 +5,13 @@ import com.example.bilyoner.core.domain.Event;
 import com.example.bilyoner.core.mapper.EventMapper;
 import com.example.bilyoner.core.service.EventService;
 import com.example.bilyoner.repository.EventRepository;
+import com.example.bilyoner.dto.EventDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -85,5 +87,24 @@ public class EventServiceImpl implements EventService {
         for (Event event : activeEvents) {
             randomOddsHandler.handle(event);
         }
+    }
+
+    @Override
+    public Optional<Event> findByUniqueFields(String leagueName, String homeTeam, String awayTeam, java.time.LocalDateTime startTime) {
+        return eventRepository.findByLeagueNameAndHomeTeamAndAwayTeamAndStartTime(leagueName, homeTeam, awayTeam, startTime)
+            .map(EventMapper::toDomain);
+    }
+
+    public Event createEvent(EventDTO eventDTO) {
+        Event event = new Event();
+        event.setLeagueName(eventDTO.getLeagueName());
+        event.setHomeTeam(eventDTO.getHomeTeam());
+        event.setAwayTeam(eventDTO.getAwayTeam());
+        event.setHomeWinOdds(eventDTO.getHomeWinOdds());
+        event.setDrawOdds(eventDTO.getDrawOdds());
+        event.setAwayWinOdds(eventDTO.getAwayWinOdds());
+        event.setStartTime(eventDTO.getStartTime());
+        event.setActive(true);
+        return createEvent(event);
     }
 } 

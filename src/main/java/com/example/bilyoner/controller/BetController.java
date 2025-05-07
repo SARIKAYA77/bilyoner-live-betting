@@ -5,6 +5,8 @@ import com.example.bilyoner.core.domain.Bet.BetType;
 import com.example.bilyoner.core.service.BetService;
 import com.example.bilyoner.dto.BetDTO;
 import com.example.bilyoner.dto.BetRequestDTO;
+import com.example.bilyoner.dto.BetSlipRequestDTO;
+import com.example.bilyoner.dto.BetSlipResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,7 +38,8 @@ public class BetController {
                 customerId,
                 BetType.valueOf(betRequestDTO.getBetType().name()),
                 betRequestDTO.getMultipleCount(),
-                betRequestDTO.getStakeAmount()
+                betRequestDTO.getStakeAmount(),
+                betRequestDTO.getOddsAtBet()
             )
             .thenApply(bet -> ResponseEntity.ok(mapToDTO(bet)))
             .exceptionally(ex -> {
@@ -70,6 +73,14 @@ public class BetController {
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(betDTOs);
+    }
+
+    @PostMapping("/betslip")
+    public ResponseEntity<BetSlipResponseDTO> placeBetSlip(
+            @RequestBody BetSlipRequestDTO betSlipRequestDTO,
+            @RequestHeader("Customer-ID") Long customerId) {
+        BetSlipResponseDTO response = betService.placeBetSlip(betSlipRequestDTO, customerId);
+        return ResponseEntity.ok(response);
     }
 
     /**

@@ -20,7 +20,7 @@ public class OddsUpdateScheduler {
         this.eventHandlerChain = eventHandlerChain;
     }
 
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRate = 3000)
     public void updateOdds() {
         System.out.println("OddsUpdateScheduler: Çalıştı");
         List<com.example.bilyoner.model.Event> activeEvents = eventRepository.findByIsActiveTrueAndStartTimeAfter(LocalDateTime.now());

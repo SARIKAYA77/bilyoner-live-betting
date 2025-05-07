@@ -8,6 +8,7 @@ import com.example.bilyoner.core.service.BetService;
 import com.example.bilyoner.core.service.EventService;
 import com.example.bilyoner.repository.BetRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import com.example.bilyoner.dto.BetSlipRequestDTO;
+import com.example.bilyoner.dto.BetSlipResponseDTO;
 
 /**
  * Implementation of BetService with Circuit Breaker pattern and timeout handling
@@ -33,18 +37,19 @@ public class BetServiceImpl implements BetService {
     private static final double MAX_TOTAL_STAKE = 10000.0;
     
     // Timeout configuration
-    private static final long TIMEOUT_SECONDS = 2;
+    private final long timeoutSeconds;
 
-    public BetServiceImpl(BetRepository betRepository, EventService eventService) {
+    public BetServiceImpl(BetRepository betRepository, EventService eventService, @Value("${bet.timeout.seconds:2}") long timeoutSeconds) {
         this.betRepository = betRepository;
         this.eventService = eventService;
+        this.timeoutSeconds = timeoutSeconds;
     }
 
     @Override
     @CircuitBreaker(name = BETTING_SERVICE, fallbackMethod = "placeBetFallback")
-    public CompletableFuture<Bet> placeBetAsync(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount) {
-        return CompletableFuture.supplyAsync(() -> placeBet(eventId, customerId, betType, multipleCount, stakeAmount))
-                .orTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    public CompletableFuture<Bet> placeBetAsync(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Double oddsAtBet) {
+        return CompletableFuture.supplyAsync(() -> placeBet(eventId, customerId, betType, multipleCount, stakeAmount, oddsAtBet))
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
                 .handle((result, ex) -> {
                     if (ex == null) return result;
                     Throwable cause = ex;
@@ -64,18 +69,25 @@ public class BetServiceImpl implements BetService {
     @Override
     @Transactional
     @CircuitBreaker(name = BETTING_SERVICE, fallbackMethod = "placeBetFallback")
-    public Bet placeBet(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount) {
-        // Validate event exists and is active
+    public Bet placeBet(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Double oddsAtBet) {
+        // Event'i getir
         Event event = eventService.getEventById(eventId);
-        if (!event.isActive()) {
-            throw new IllegalStateException("Event is not active");
+
+        // Sadece aktif ve future eventlere izin ver
+        if (!event.isActive() || event.getStartTime().isBefore(LocalDateTime.now())) {
+            throw new IllegalStateException("Event is not active or already started/finished");
         }
-        
+
         // Validate bet constraints
         validateBetConstraints(multipleCount, stakeAmount);
         
         // Get odds based on bet type
-        double odds = getOddsForBetType(event, betType);
+        double currentOdds = getOddsForBetType(event, betType);
+        
+        // Odds kontrolü
+        if (Double.compare(currentOdds, oddsAtBet) != 0) {
+            throw new com.example.bilyoner.core.exception.OddsChangedException("Oran değişti, lütfen güncel oranla tekrar deneyin!", currentOdds);
+        }
         
         // Create bet domain object
         Bet bet = new Bet();
@@ -84,7 +96,7 @@ public class BetServiceImpl implements BetService {
         bet.setBetType(betType);
         bet.setMultipleCount(multipleCount);
         bet.setStakeAmount(stakeAmount);
-        bet.setOddsAtBet(odds);
+        bet.setOddsAtBet(currentOdds);
         bet.setPlacedAt(LocalDateTime.now());
         bet.setActive(true);
         
@@ -138,10 +150,9 @@ public class BetServiceImpl implements BetService {
     /**
      * Fallback method for Circuit Breaker
      */
-    public Bet placeBetFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Exception ex) {
+    public Bet placeBetFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Double oddsAtBet, Exception ex) {
         // Log the exception
         System.err.println("Circuit breaker triggered for bet placement: " + ex.getMessage());
-        // Exception'ı tekrar fırlat ki GlobalExceptionHandler çalışsın
         if (ex instanceof RuntimeException) {
             throw (RuntimeException) ex;
         }
@@ -151,10 +162,8 @@ public class BetServiceImpl implements BetService {
     /**
      * Fallback method for async Circuit Breaker
      */
-    public CompletableFuture<Bet> placeBetAsyncFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Exception ex) {
-        // Log the exception
+    public CompletableFuture<Bet> placeBetAsyncFallback(Long eventId, Long customerId, BetType betType, Integer multipleCount, Double stakeAmount, Double oddsAtBet, Exception ex) {
         System.err.println("Circuit breaker triggered for async bet placement: " + ex.getMessage());
-        // Exception'ı tekrar fırlat ki GlobalExceptionHandler çalışsın
         CompletableFuture<Bet> future = new CompletableFuture<>();
         if (ex instanceof RuntimeException) {
             future.completeExceptionally(ex);
@@ -162,5 +171,80 @@ public class BetServiceImpl implements BetService {
             future.completeExceptionally(new RuntimeException(ex));
         }
         return future;
+    }
+
+    @Override
+    public BetSlipResponseDTO placeBetSlip(BetSlipRequestDTO betSlipRequestDTO, Long customerId) {
+        List<BetSlipResponseDTO.BetResultDTO> results = new java.util.ArrayList<>();
+        for (BetSlipRequestDTO.SingleBetDTO singleBet : betSlipRequestDTO.getBets()) {
+            BetSlipResponseDTO.BetResultDTO result = new BetSlipResponseDTO.BetResultDTO();
+            result.setEventId(singleBet.getEventId());
+            result.setBetType(singleBet.getBetType());
+            // Önce tek kupon için multipleCount limiti kontrolü
+            if (betSlipRequestDTO.getMultipleCount() > MAX_MULTIPLE_COUNT) {
+                result.setStatus("LIMIT_ERROR");
+                result.setMessage("Bir kuponda en fazla " + MAX_MULTIPLE_COUNT + " adet oynayabilirsiniz.");
+                results.add(result);
+                continue;
+            }
+            // Sonra toplam limit kontrolü
+            int totalMultipleForEvent = betRepository.sumMultipleCountByEventId(singleBet.getEventId());
+            int newTotal = totalMultipleForEvent + betSlipRequestDTO.getMultipleCount();
+            int remaining = MAX_MULTIPLE_COUNT - totalMultipleForEvent;
+            if (newTotal > MAX_MULTIPLE_COUNT) {
+                result.setStatus("LIMIT_EXCEEDED");
+                if (remaining <= 0) {
+                    result.setMessage("Bu maça toplamda maksimum 500 adet kupon oynanabilir. Artık yeni kupon oynanamaz.");
+                } else {
+                    result.setMessage("Bu maça toplamda maksimum 500 adet kupon oynanabilir. Şu ana kadar "
+                        + totalMultipleForEvent + " adet oynandı, en fazla " + remaining + " adet daha oynayabilirsiniz.");
+                }
+                results.add(result);
+                continue;
+            }
+            // Event ve oran kontrolleri
+            Event event = eventService.getEventById(singleBet.getEventId());
+            if (!event.isActive() || event.getStartTime().isBefore(java.time.LocalDateTime.now())) {
+                result.setStatus("INACTIVE_EVENT");
+                result.setMessage("Event is not active or already started/finished");
+                results.add(result);
+                continue;
+            }
+            double currentOdds = getOddsForBetType(event, BetType.valueOf(singleBet.getBetType()));
+            if (Double.compare(currentOdds, singleBet.getOddsAtBet()) != 0) {
+                result.setStatus("ODDS_CHANGED");
+                result.setCurrentOdds(currentOdds);
+                result.setMessage("Oran değişti, lütfen güncel oranla tekrar deneyin!");
+                results.add(result);
+                continue;
+            }
+            // Limit ve stake kontrolü
+            try {
+                validateBetConstraints(betSlipRequestDTO.getMultipleCount(), betSlipRequestDTO.getStakeAmount());
+            } catch (Exception e) {
+                result.setStatus("LIMIT_ERROR");
+                result.setMessage(e.getMessage());
+                results.add(result);
+                continue;
+            }
+            // Başarılı ise bet kaydet
+            Bet bet = new Bet();
+            bet.setEventId(singleBet.getEventId());
+            bet.setCustomerId(customerId);
+            bet.setBetType(BetType.valueOf(singleBet.getBetType()));
+            bet.setMultipleCount(betSlipRequestDTO.getMultipleCount());
+            bet.setStakeAmount(betSlipRequestDTO.getStakeAmount());
+            bet.setOddsAtBet(currentOdds);
+            bet.setPlacedAt(java.time.LocalDateTime.now());
+            bet.setActive(true);
+            com.example.bilyoner.model.Bet betEntity = BetMapper.toEntity(bet);
+            betRepository.save(betEntity);
+            result.setStatus("OK");
+            results.add(result);
+        }
+        BetSlipResponseDTO response = new BetSlipResponseDTO();
+        response.setSuccess(results.stream().allMatch(r -> "OK".equals(r.getStatus())));
+        response.setResults(results);
+        return response;
     }
 } 

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -72,6 +73,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGenericException(Exception ex) {
         Map<String, String> error = new HashMap<>();
+        // Eğer static resource hatasıysa, 404 dön
+        if (ex instanceof NoResourceFoundException) {
+            error.put("error", "Kaynak bulunamadı: " + ((NoResourceFoundException) ex).getResourcePath());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        }
         error.put("error", "Beklenmeyen bir hata oluştu: " + ex.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
@@ -101,10 +107,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(OddsChangedException.class)
-    public ResponseEntity<Map<String, String>> handleOddsChanged(OddsChangedException ex) {
-        Map<String, String> error = new HashMap<>();
+    public ResponseEntity<Map<String, Object>> handleOddsChanged(OddsChangedException ex) {
+        Map<String, Object> error = new HashMap<>();
         error.put("error", "Odds changed");
         error.put("message", ex.getMessage());
+        error.put("currentOdds", ex.getCurrentOdds());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 

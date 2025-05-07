@@ -18,10 +18,7 @@ public class SchedulerConfig {
         this.eventService = eventService;
     }
 
-    /**
-     * Updates odds for all active events every second
-     */
-    @Scheduled(fixedRate = 1000) // Run every 1 second
+    @Scheduled(fixedRate = 1000)
     public void scheduleOddsUpdate() {
         eventService.updateAllEventOdds();
     }
