@@ -76,6 +76,7 @@
     "oddsAtBet": 1.85
   }
   ```
+  /api/events/{id} (yani event’i ID ile getiren) bir GET
 
 #### Kombine (Çoklu) Kupon Yap
 - **POST** `/api/bets/betslip`
@@ -142,13 +143,6 @@
 - **Birim Testleri:** `src/test/java` altında örnek testler mevcut.
 - **Mock Authentication:** Gerçek kullanıcı doğrulaması yok, `Customer-ID` header ile işlem yapılır.
 - **Hata Yönetimi:** Tüm iş kuralları için detaylı hata mesajları ve HTTP status kodları döner.
-
----
-
-## Swagger/OpenAPI
-
-- **Swagger UI:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-- **OpenAPI JSON:** [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
 
 ---
 
